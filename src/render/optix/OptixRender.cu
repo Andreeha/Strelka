@@ -312,7 +312,7 @@ extern "C" __global__ void __closesthit__light()
         else
         {
             float lightPdf = getLightPdf(currLight, hitPoint, optixGetWorldRayOrigin()) / (params.scene.numLights);
-            const float misWeight = misWeightBalance(prd->lastBsdfPdf, lightPdf);
+            const float misWeight = params.useMisWeightPower ? misWeightPower(prd->lastBsdfPdf, lightPdf, params.misWeightPowerPower) : misWeightBalance(prd->lastBsdfPdf, lightPdf);
             prd->radiance += prd->throughput * make_float3(currLight.color) * -dot(rayDir, lightNormal) * misWeight;
         }
     }

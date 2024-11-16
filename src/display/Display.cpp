@@ -180,6 +180,47 @@ void Display::drawUI()
     float shadowRayTmin = mSettings->getAs<float>("render/pt/dev/shadowRayTmin");
     ImGui::InputFloat("Shadow ray T min", (float*)&shadowRayTmin, 0.1);
     mSettings->setAs<float>("render/pt/dev/shadowRayTmin", shadowRayTmin);
+    mSettings->setAs<float>("render/pt/dev/shadowRayTmin", shadowRayTmin);
+
+    bool useRestirProbe = mSettings->getAs<bool>("render/pt/useRestirProbe");
+    ImGui::Checkbox("Use Restir Probe", &useRestirProbe);
+    mSettings->setAs<bool>("render/pt/useRestirProbe", useRestirProbe);
+
+    bool useMisWeightPower = mSettings->getAs<bool>("render/pt/useMisWeightPower");
+    ImGui::Checkbox("Use Mis Weight Power", &useMisWeightPower);
+    mSettings->setAs<bool>("render/pt/useMisWeightPower", useMisWeightPower);
+
+    if (useMisWeightPower)
+    {
+        float misWeightPowerPower = mSettings->getAs<float>("render/pt/misWeightPowerPower");
+        ImGui::InputFloat("Mis Power Heuristic Power", (float*)&misWeightPowerPower, 0.1);
+        mSettings->setAs<float>("render/pt/misWeightPowerPower", misWeightPowerPower);    
+    }
+
+    /*
+    bool enableUpscale = mSettings->getAs<bool>("render/pt/enableUpscale");
+    ImGui::Checkbox("Enable Upscale", &enableUpscale);
+    mSettings->setAs<bool>("render/pt/enableUpscale", enableUpscale);
+
+    float upscaleFactor = 0.0f;
+    if (enableUpscale)
+    {
+        upscaleFactor = 0.5f;
+    }
+    else
+    {
+        upscaleFactor = 1.0f;
+    }
+    mSettings->setAs<float>("render/pt/upscaleFactor", upscaleFactor);
+
+    if (ImGui::Button("Capture Screen"))
+    {
+        mSettings->setAs<bool>("render/pt/needScreenshot", true);
+    }
+
+    // bool isRecreate = ImGui::Button("Recreate BVH");
+    // renderConfig.recreateBVH = isRecreate ? true : false;
+    */
 
     ImGui::End(); // end window
 

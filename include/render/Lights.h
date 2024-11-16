@@ -30,6 +30,11 @@ __forceinline__ __device__ float misWeightBalance(const float a, const float b)
     return 1.0f / ( 1.0f + (b / a) );
 }
 
+__forceinline__ __device__ float misWeightPower(const float a, const float b, const float p)
+{
+    return 1.0f / ( 1.0f + powf((b / a), p) );
+}
+
 static __inline__ __device__ float calcLightArea(const UniformLight& l)
 {
     float area = 0.0f;
