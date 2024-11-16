@@ -11,3 +11,9 @@ external/metal-cpp*
 external/imgui*
 data/test_data
 CMakeUserPresets.json
+
+build.sh
+CTAGS.sh
+reset
+setup.sh
+tags
