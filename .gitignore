@@ -12,6 +12,7 @@ external/imgui*
 data/test_data
 CMakeUserPresets.json
 
+venv/
 build.sh
 CTAGS.sh
 reset
