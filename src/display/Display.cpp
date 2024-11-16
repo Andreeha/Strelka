@@ -207,6 +207,21 @@ void Display::drawUI()
     ImGui::InputFloat("Shadow ray T min", (float*)&shadowRayTmin, 0.1);
     mCtx->mSettingsManager->setAs<float>("render/pt/dev/shadowRayTmin", shadowRayTmin);
 
+    bool useRestirProbe = mCtx->mSettingsManager->getAs<bool>("render/pt/useRestirProbe");
+    ImGui::Checkbox("Use Restir Probe", &useRestirProbe);
+    mCtx->mSettingsManager->setAs<bool>("render/pt/useRestirProbe", useRestirProbe);
+
+    bool useMisWeightPower = mCtx->mSettingsManager->getAs<bool>("render/pt/useMisWeightPower");
+    ImGui::Checkbox("Use Mis Weight Power", &useMisWeightPower);
+    mCtx->mSettingsManager->setAs<bool>("render/pt/useMisWeightPower", useMisWeightPower);
+
+    if (useMisWeightPower)
+    {
+        float misWeightPowerPower = mCtx->mSettingsManager->getAs<float>("render/pt/misWeightPowerPower");
+        ImGui::InputFloat("Mis Power Heuristic Power", (float*)&misWeightPowerPower, 0.1);
+        mCtx->mSettingsManager->setAs<float>("render/pt/misWeightPowerPower", misWeightPowerPower);    
+    }
+
     /*
     bool enableUpscale = mCtx->mSettingsManager->getAs<bool>("render/pt/enableUpscale");
     ImGui::Checkbox("Enable Upscale", &enableUpscale);

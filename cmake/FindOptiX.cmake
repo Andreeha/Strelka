@@ -51,7 +51,7 @@ endif()
 # Include
 find_path(OptiX_INCLUDE
   NAMES optix.h
-  PATHS "${OptiX_INSTALL_DIR}/include"
+  PATHS "/etc/_cuda/include"
   NO_DEFAULT_PATH
   )
 find_path(OptiX_INCLUDE

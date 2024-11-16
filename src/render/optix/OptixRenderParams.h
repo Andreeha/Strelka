@@ -35,6 +35,8 @@ struct SceneData
     uint32_t numLights;
 };
 
+typedef float4* Reservoirs;
+
 struct Params
 {
     uint32_t subframe_index;
@@ -65,6 +67,11 @@ struct Params
     uint32_t debug;
     float shadowRayTmin;
     float materialRayTmin;
+
+    Reservoirs reservoirs;
+    bool useRestirProbe;
+    bool useMisWeightPower;
+    float misWeightPowerPower;
 };
 
 enum class EventType: uint8_t

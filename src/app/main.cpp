@@ -326,6 +326,14 @@ int main(int argc, const char* argv[])
                                                                               // sampling
     ctx->mSettingsManager->setAs<float>("render/pt/dev/materialRayTmin", 0.0f); // offset to avoid self-collision in
 
+    // Restir probe:
+    ctx->mSettingsManager->setAs<bool>("render/pt/useRestirProbe", false);
+
+    // Power heuristic:
+    ctx->mSettingsManager->setAs<bool>("render/pt/useMisWeightPower", false);
+    ctx->mSettingsManager->setAs<float>("render/pt/misWeightPowerPower", 2.0);
+    
+
     oka::Render* render = oka::RenderFactory::createRender();
     oka::Scene scene = {};
     

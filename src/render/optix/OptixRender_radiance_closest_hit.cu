@@ -453,14 +453,51 @@ static __forceinline__ __device__ SurfaceHitData fillCurveGeomData(const HitGrou
     return res;
 }
 
+typedef float4 Reservoir;
+#define R_INDEX x
+#define R_WEIGHT y
+#define R_ACCUM_WEIGHT z
+#define R_CNT w
+// x - index
+// y - weight
+// z - accum_weight
+// w - cnt
+
+static __forceinline__ __device__ float random(float start, float end, SamplerState ss)
+{
+    ss.seed += 1;
+    return start + (end - start) * random<SampleDimension::eLightId>(ss);
+}
+
+static __forceinline__ __device__ bool IsReservoirValid(Reservoir& reservoir)
+{
+    return reservoir.R_INDEX != -1;
+}
+
+static __forceinline__ __device__ bool UpdateReservoir(Reservoir& reservoir, float index, float weight, float cnt, SamplerState ss)
+{
+    reservoir.R_ACCUM_WEIGHT += weight;
+    reservoir.R_CNT += cnt;
+ 
+    if ( random(0, 1, ss) < weight / reservoir.R_ACCUM_WEIGHT  )
+    {
+        reservoir.R_INDEX = index;
+        return true;
+    }
+ 
+    return false;
+} 
+
 extern "C" __global__ void __closesthit__radiance()
 {
+    #define RESTIR_PROBE
     OptixPrimitiveType primType = optixGetPrimitiveType();
 
     PerRayData* prd = getPRD();
     const bool isInside = prd->inside;
     HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
     const float3 ray_dir = optixGetWorldRayDirection();
+
 
     SurfaceHitData surfaceHit;
     if (primType == OPTIX_PRIMITIVE_TYPE_TRIANGLE)
@@ -544,6 +581,10 @@ extern "C" __global__ void __closesthit__radiance()
         }
     }
 
+    #ifdef RESTIR_PROBE
+    float misWeightProbe = 1.0f;
+    #endif // RESTIR_PROBE
+
     if (sample_data.event_type & ((mi::neuraylib::BSDF_EVENT_DIFFUSE | mi::neuraylib::BSDF_EVENT_GLOSSY)))
     {
         float3 toLight; // return value for sampleLights()
@@ -582,11 +623,131 @@ extern "C" __global__ void __closesthit__radiance()
             if (evalData.pdf > 0.0f)
             {
                 const float3 radianceOverPdf = radiance / lightPdf;
-                const float misWeight = misWeightBalance(lightPdf, evalData.pdf);
+                const float misWeight = params.useMisWeightPower ? misWeightPower(lightPdf, evalData.pdf, params.misWeightPowerPower) : misWeightBalance(lightPdf, evalData.pdf);
+                #ifdef RESTIR_PROBE
+                misWeightProbe = misWeight;
+                #endif
                 prd->radiance += prd->throughput * radianceOverPdf * misWeight * (evalData.bsdf_diffuse + evalData.bsdf_glossy);
             }
         }
     }
+
+    #ifdef RESTIR_PROBE // RESTIR_PROBE
+    #define min(a, b) (a > b ? b : a)
+    #define max(a, b) (a > b ? a : b)
+    if (params.useRestirProbe && prd->depth == 0)
+    {
+        int M = 10;
+        float pdf = 1.0 / params.scene.numLights;
+        float p_hat = 0;
+        Reservoir reservoir = { 0 };
+        float3 toLight;
+        for (uint32_t i = 0; i < M; i++)
+        {
+            uint32_t light_index = (uint32_t)(params.scene.numLights * random(0, 1, prd->sampler));
+            const UniformLight& currLight = params.scene.lights[light_index];
+            p_hat = length(sampleLight(prd->sampler, currLight, state, toLight, pdf));
+            float weight = p_hat / pdf;
+
+            UpdateReservoir(reservoir, light_index, weight, 1, prd->sampler);
+        }
+        if (IsReservoirValid(reservoir))
+        {
+            const int pixel_index = prd->linearPixelIndex / 4;
+            const int pixel_x = pixel_index % params.image_width;
+            const int pixel_y = pixel_index / params.image_width;
+            #if 1 // RESTIR_PROBE_REUSE
+            {
+
+                Reservoir tmp_reservoir = { 0 };
+
+                Reservoir prev_reservoir = params.reservoirs[pixel_index];
+                
+                if (1) // TODO: add validHistory check
+                {
+                    float3 toLight;
+                    UpdateReservoir(tmp_reservoir, reservoir.R_INDEX, p_hat * reservoir.R_WEIGHT * reservoir.R_CNT, reservoir.R_CNT, prd->sampler);
+                    const UniformLight& prevLight = params.scene.lights[(uint32_t)prev_reservoir.R_INDEX];
+                    float p_hat_prev = length(sampleLight(prd->sampler, prevLight, state, toLight, pdf));
+                    const UniformLight& tmpLight = params.scene.lights[(uint32_t)tmp_reservoir.R_INDEX];
+                    p_hat = IsReservoirValid(tmp_reservoir) ? length(sampleLight(prd->sampler, tmpLight, state, toLight, pdf)) : 0.0f;
+                    tmp_reservoir.R_WEIGHT = p_hat > 0.0 ? tmp_reservoir.R_ACCUM_WEIGHT / tmp_reservoir.R_CNT / p_hat : 0.0;
+
+                    reservoir = tmp_reservoir;
+                }
+            }
+            #endif // RESTIR_PROBE_REUSE
+            #if 0 // RESTIR_PROBE_NEIGHBOURS
+            {
+                Reservoir new_reservoir = { 0 };
+                UpdateReservoir(new_reservoir, reservoir.R_INDEX, p_hat * reservoir.R_WEIGHT * reservoir.R_CNT, reservoir.R_CNT, prd->sampler);
+
+                uint32_t n_of_neighbours = 5;
+                uint32_t radius = 5;
+                for (uint32_t i = 0; i < n_of_neighbours; i++)
+                {
+                    float2 offset = 2 * make_float2(random(0,1,prd->sampler) - 0.5, random(0,1,prd->sampler) - 0.5);
+                    offset.x = pixel_x + int(offset.x * radius);
+                    offset.y = pixel_y + int(offset.y * radius);
+
+                    offset.x = max(0, min(params.image_width-1, offset.x));
+                    offset.y = max(0, min(params.image_height-1, offset.y));
+
+                    // TODO: add skipping not suitable neighbours
+
+                    Reservoir n_reservoir = params.reservoirs[(uint32_t)(offset.y * params.image_width + offset.x)];
+
+                    const UniformLight& nLight = params.scene.lights[(uint32_t)n_reservoir.R_INDEX];
+                    float3 toLight;
+                    p_hat = IsReservoirValid(n_reservoir) ? length(sampleLight(prd->sampler, nLight, state, toLight, pdf)) : 0;
+                    UpdateReservoir(new_reservoir, n_reservoir.R_INDEX, p_hat * n_reservoir.R_WEIGHT * n_reservoir.R_CNT, n_reservoir.R_CNT, prd->sampler);
+                }
+                const UniformLight& newLight = params.scene.lights[(uint32_t)new_reservoir.R_INDEX];
+                float3 toLight;
+                float3 radiance = IsReservoirValid(new_reservoir) ? sampleLight(prd->sampler, newLight, state, toLight, pdf) : make_float3(0,0,0);
+                p_hat = length(radiance);
+                new_reservoir.R_WEIGHT = p_hat > 0.0 ? new_reservoir.R_ACCUM_WEIGHT / new_reservoir.R_CNT / p_hat : 0.0;
+                reservoir = new_reservoir;
+
+                float3 origin = state.position;
+                float4 lpos = params.scene.lights[(uint32_t)new_reservoir.R_INDEX].points[0];
+                float3 dir = origin - make_float3(lpos.x, lpos.y, lpos.z);
+                float len = length(dir);
+                dir = normalize(dir);
+                
+                bool occluded = traceOcclusion(params.handle, origin, dir, 0.05, len);
+
+                // TODO: add diffuse and specular
+            }
+            #endif // RESTIR_PROBE_NEIGHBOURS
+            {
+                const UniformLight& currLight = params.scene.lights[(uint32_t)reservoir.R_INDEX];
+                float3 origin = state.position;
+                float4 lpos = params.scene.lights[(uint32_t)reservoir.R_INDEX].points[0];
+                float3 dir = origin - make_float3(lpos.x, lpos.y, lpos.z);
+                float len = length(dir);
+                dir = normalize(dir);
+                
+                float occluded = traceOcclusion(params.handle, origin, dir, 0.05, len);
+
+                float3 radiance = occluded * sampleLight(prd->sampler, params.scene.lights[(uint32_t)reservoir.R_INDEX], state, toLight, pdf);
+                p_hat = length(radiance);
+                reservoir.R_WEIGHT = p_hat > 0.0 ? reservoir.R_ACCUM_WEIGHT / reservoir.R_CNT / p_hat : 0.0;
+
+                radiance *= reservoir.R_WEIGHT / pdf * misWeightProbe;
+                prd->radiance = radiance;
+
+                params.reservoirs[pixel_index] = reservoir;
+            }
+        } else {
+            prd->radiance = make_float3(1000.0f, 0.0f, 0.0f);
+            prd->throughput = make_float3(0,0,0);
+            return;
+        }
+    }
+    #undef min
+    #undef max
+    #endif // RESTIR_PROBE_END
 
     // setup next path segment
     // flip inside/outside on transmission
