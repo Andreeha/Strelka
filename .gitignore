@@ -12,3 +12,9 @@ external/imgui*
 external/ImGuiFileDialog
 data/test_data
 CMakeUserPresets.json
+
+build.sh
+CTAGS.sh
+reset
+setup.sh
+tags
