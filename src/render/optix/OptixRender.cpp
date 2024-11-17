@@ -908,12 +908,13 @@ void OptiXRender::render(Buffer* output)
 
     // RESTIR_PROBE_RESERVOIRS
     size_t reservoirs_mem_cap = mState.params.image_height * mState.params.image_width;
-    if (mState.params.reservoirs)
-    {
-        CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
+    if (!mState.params.reservoirs || 0 == getSharedContext().mSubframeIndex) {
+        if (mState.params.reservoirs)
+        {
+            CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
+        }
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), sizeof(float4) * reservoirs_mem_cap)); 
     }
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), sizeof(float4) * reservoirs_mem_cap)); 
-
 
     memcpy(params.viewToWorld, glm::value_ptr(glm::transpose(glm::inverse(camera.matrices.view))),
            sizeof(params.viewToWorld));
