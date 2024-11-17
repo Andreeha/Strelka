@@ -860,9 +860,9 @@ void OptiXRender::updatePathtracerParams(const uint32_t width, const uint32_t he
         {
             CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
         }
+        const size_t frameSize = mState.params.image_width * mState.params.image_height;
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), frameSize * sizeof(float4)));
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.d_params), sizeof(Params)));
-        const size_t frameSize = mState.params.image_width * mState.params.image_height;
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.accum), frameSize * sizeof(float4)));
         
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.diffuse), frameSize * sizeof(float4)));
@@ -961,12 +961,13 @@ void OptiXRender::render(Buffer* output)
 
     // RESTIR_PROBE_RESERVOIRS
     size_t reservoirs_mem_cap = mState.params.image_height * mState.params.image_width;
-    if (mState.params.reservoirs)
-    {
-        CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
+    if (!mState.params.reservoirs || 0 == getSharedContext().mSubframeIndex) {
+        if (mState.params.reservoirs)
+        {
+            CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
+        }
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), sizeof(float4) * reservoirs_mem_cap)); 
     }
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), sizeof(float4) * reservoirs_mem_cap)); 
-
 
     memcpy(params.viewToWorld, glm::value_ptr(glm::transpose(glm::inverse(camera.matrices.view))), sizeof(params.viewToWorld));
     memcpy(params.clipToView, glm::value_ptr(glm::transpose(camera.matrices.invPerspective)), sizeof(params.clipToView));
