@@ -789,7 +789,17 @@ void OptiXRender::updatePathtracerParams(const uint32_t width, const uint32_t he
         {
             CUDA_CHECK(cudaFree((void*)mState.params.specular));
         }
+        if (mState.d_params)
+        {
+            CUDA_CHECK(cudaFree((void*)mState.d_params));
+        }
+        if (mState.params.reservoirs)
+        {
+            CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
+        }
         const size_t frameSize = mState.params.image_width * mState.params.image_height;
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), frameSize * sizeof(float4)));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.d_params), sizeof(Params)));
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.accum), frameSize * sizeof(float4)));
 
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.diffuse), frameSize * sizeof(float4)));
