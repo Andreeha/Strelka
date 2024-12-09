@@ -809,6 +809,9 @@ void OptiXRender::updatePathtracerParams(const uint32_t width, const uint32_t he
         }
         const size_t frameSize = mState.params.image_width * mState.params.image_height;
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), frameSize * sizeof(float4)));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.worldPosition), frameSize * sizeof(float4)));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.prevWorldPosition), frameSize * sizeof(float4)));
+        mState.params.cameraMoved = true;
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.d_params), sizeof(Params)));
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.accum), frameSize * sizeof(float4)));
 
