@@ -789,17 +789,23 @@ void OptiXRender::updatePathtracerParams(const uint32_t width, const uint32_t he
         {
             CUDA_CHECK(cudaFree((void*)mState.params.specular));
         }
-        if (mState.d_params)
-        {
-            CUDA_CHECK(cudaFree((void*)mState.d_params));
-        }
         if (mState.params.reservoirs)
         {
             CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
         }
+        if (mState.params.worldPosition)
+        {
+            CUDA_CHECK(cudaFree((void*)mState.params.worldPosition));
+        }
+        if (mState.params.prevWorldPosition)
+        {
+            CUDA_CHECK(cudaFree((void*)mState.params.prevWorldPosition));
+        }
         const size_t frameSize = mState.params.image_width * mState.params.image_height;
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), frameSize * sizeof(float4)));
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.d_params), sizeof(Params)));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.worldPosition), frameSize * sizeof(float4)));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.prevWorldPosition), frameSize * sizeof(float4)));
+        mState.params.cameraMoved = true;
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.accum), frameSize * sizeof(float4)));
 
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.diffuse), frameSize * sizeof(float4)));
@@ -902,18 +908,31 @@ void OptiXRender::render(Buffer* output)
     params.debug = settings.getAs<uint32_t>("render/pt/debug");
     params.shadowRayTmin = settings.getAs<float>("render/pt/dev/shadowRayTmin");
     params.materialRayTmin = settings.getAs<float>("render/pt/dev/materialRayTmin");
-    params.useRestirProbe = settings.getAs<bool>("render/pt/useRestirProbe");
+    params.useRestirProbe = 1; //settings.getAs<bool>("render/pt/useRestirProbe");
     params.useMisWeightPower = settings.getAs<bool>("render/pt/useMisWeightPower");
     params.misWeightPowerPower = settings.getAs<float>("render/pt/misWeightPowerPower");
-
+    params.cameraPosition = *(float3*)glm::value_ptr(camera.position);
+    params.cameraMoved = 0 == getSharedContext().mSubframeIndex;
+    memcpy(params.invPerspective, glm::value_ptr(camera.matrices.invPerspective), 16 * sizeof(float));
     // RESTIR_PROBE_RESERVOIRS
     size_t reservoirs_mem_cap = mState.params.image_height * mState.params.image_width;
     if (!mState.params.reservoirs || 0 == getSharedContext().mSubframeIndex) {
-        if (mState.params.reservoirs)
-        {
+        if (mState.params.reservoirs) {
             CUDA_CHECK(cudaFree((void*)mState.params.reservoirs));
         }
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.reservoirs), sizeof(float4) * reservoirs_mem_cap)); 
+    }
+    if (!mState.params.worldPosition || 0 == getSharedContext().mSubframeIndex) {
+        if (mState.params.worldPosition) {
+            CUDA_CHECK(cudaFree((void*)mState.params.worldPosition));
+        }
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.worldPosition), sizeof(float4) * reservoirs_mem_cap)); 
+    }
+    if (!mState.params.prevWorldPosition || 0 == getSharedContext().mSubframeIndex) {
+        if (mState.params.prevWorldPosition) {
+            CUDA_CHECK(cudaFree((void*)mState.params.prevWorldPosition));
+        }
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&mState.params.prevWorldPosition), sizeof(float4) * reservoirs_mem_cap)); 
     }
 
     memcpy(params.viewToWorld, glm::value_ptr(glm::transpose(glm::inverse(camera.matrices.view))),

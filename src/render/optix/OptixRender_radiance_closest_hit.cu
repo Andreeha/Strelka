@@ -486,7 +486,20 @@ static __forceinline__ __device__ bool UpdateReservoir(Reservoir& reservoir, flo
     }
  
     return false;
-} 
+}
+
+static __forceinline__ __device__ float4 MatMulFloat4(float m[16], float4 v) {
+    return float4 {
+        v.x*m[0]  + v.y*m[1]  + v.z*m[2]  + v.w*m[3],
+        v.x*m[4]  + v.y*m[5]  + v.z*m[6]  + v.w*m[7],
+        v.x*m[8]  + v.y*m[9]  + v.z*m[10] + v.w*m[11],
+        v.x*m[12] + v.y*m[13] + v.z*m[14] + v.w*m[15]
+    };
+}
+
+static __forceinline__ __device__ bool nearFF4(float4 a, float4 b, float e) {
+    return abs(a.x-b.x)<e && abs(a.y-b.y)<e && abs(a.z-b.z)<e;
+}
 
 extern "C" __global__ void __closesthit__radiance()
 {
@@ -595,8 +608,29 @@ extern "C" __global__ void __closesthit__radiance()
         float3 radiance = make_float3(0,0,0);
         #define min(a, b) (a > b ? b : a)
         #define max(a, b) (a > b ? a : b)
-        if (params.useRestirProbe && prd->depth == 0)
+        if (prd->depth == 0)
         {
+        #if 1
+            const int pixel_index = prd->linearPixelIndex / 4;
+            const int pixel_x = pixel_index % params.image_width;
+            const int pixel_y = pixel_index / params.image_width;
+            
+            Reservoir prevRad = params.reservoirs[pixel_index];
+            
+            
+            if (params.cameraMoved) {
+                float4 p = {state.position.x, state.position.y, state.position.z, 1};
+                float4 at = MatMulFloat4(params.prevPerspective, p);
+                const int prevIndex = (int)(at.x+0.5)*params.image_width + (int)(at.y+0.5)*params.image_height * params.image_width;
+                if (abs(at.x+0.5) < 1 && abs(at.y+0.5) < 1 && nearFF4(params.prevWorldPosition[prevIndex], p, 1e-6)) {
+                    prevRad = params.reservoirs[prevIndex];
+                     prd->radiance = make_float3(0.0f, 1000.0f, 0.0f);
+                prd->throughput = make_float3(0,0,0);
+
+                return;
+                }
+            }
+
             int M = 10;
             float pdf = 1.0 / params.scene.numLights;
             float p_hat = 0;
@@ -611,11 +645,9 @@ extern "C" __global__ void __closesthit__radiance()
 
                 UpdateReservoir(reservoir, light_index, weight, 1, prd->sampler);
             }
+            
             if (IsReservoirValid(reservoir))
             {
-                const int pixel_index = prd->linearPixelIndex / 4;
-                const int pixel_x = pixel_index % params.image_width;
-                const int pixel_y = pixel_index / params.image_width;
                 #if 1 // RESTIR_PROBE_REUSE
                 {
 
@@ -627,13 +659,18 @@ extern "C" __global__ void __closesthit__radiance()
                     {
                         float3 toLight;
                         UpdateReservoir(tmp_reservoir, reservoir.R_INDEX, p_hat * reservoir.R_WEIGHT * reservoir.R_CNT, reservoir.R_CNT, prd->sampler);
-                        const UniformLight& prevLight = params.scene.lights[(uint32_t)prev_reservoir.R_INDEX];
-                        float p_hat_prev = length(sampleLight(prd->sampler, prevLight, state, toLight, pdf));
-                        const UniformLight& tmpLight = params.scene.lights[(uint32_t)tmp_reservoir.R_INDEX];
-                        p_hat = IsReservoirValid(tmp_reservoir) ? length(sampleLight(prd->sampler, tmpLight, state, toLight, pdf)) : 0.0f;
-                        tmp_reservoir.R_WEIGHT = p_hat > 0.0 ? tmp_reservoir.R_ACCUM_WEIGHT / tmp_reservoir.R_CNT / p_hat : 0.0;
+                        if ((uint32_t)prev_reservoir.R_INDEX < params.scene.numLights && (uint32_t)prev_reservoir.R_INDEX >= 0) {
+                            const UniformLight& prevLight = params.scene.lights[params.scene.numLights-1]; //(uint32_t)prev_reservoir.R_INDEX];
+                            float3 az = sampleLight(prd->sampler, prevLight, state, toLight, pdf);
+                            float p_hat_prev = length(az);
+                            if ((uint32_t)tmp_reservoir.R_INDEX < params.scene.numLights && (uint32_t)tmp_reservoir.R_INDEX >= 0) {
+                                const UniformLight& tmpLight = params.scene.lights[(uint32_t)tmp_reservoir.R_INDEX];
+                                p_hat = IsReservoirValid(tmp_reservoir) ? length(sampleLight(prd->sampler, tmpLight, state, toLight, pdf)) : 0.0f;
+                                tmp_reservoir.R_WEIGHT = p_hat > 0.0 ? tmp_reservoir.R_ACCUM_WEIGHT / tmp_reservoir.R_CNT / p_hat : 0.0;
 
-                        reservoir = tmp_reservoir;
+                                reservoir = tmp_reservoir;
+                            }
+                        }
                     }
                 }
                 #endif // RESTIR_PROBE_REUSE
@@ -659,30 +696,34 @@ extern "C" __global__ void __closesthit__radiance()
 
                         Reservoir n_reservoir = params.reservoirs[(uint32_t)(offset.y * params.image_width + offset.x)];
 
+                        if ((uint32_t)n_reservoir.R_INDEX < params.scene.numLights && (uint32_t)n_reservoir.R_INDEX >= 0) {
                         const UniformLight& nLight = params.scene.lights[(uint32_t)n_reservoir.R_INDEX];
                         float3 toLight;
                         p_hat = IsReservoirValid(n_reservoir) ? length(sampleLight(prd->sampler, nLight, state, toLight, pdf)) : 0;
                         UpdateReservoir(new_reservoir, n_reservoir.R_INDEX, p_hat * n_reservoir.R_WEIGHT * n_reservoir.R_CNT, n_reservoir.R_CNT, prd->sampler);
+                        }
                     }
+                    if (new_reservoir.R_INDEX < params.scene.numLights && new_reservoir.R_INDEX >= 0) {
                     const UniformLight& newLight = params.scene.lights[(uint32_t)new_reservoir.R_INDEX];
                     float3 toLight;
                     float3 radiance = IsReservoirValid(new_reservoir) ? sampleLight(prd->sampler, newLight, state, toLight, pdf) : make_float3(0,0,0);
                     p_hat = length(radiance);
                     new_reservoir.R_WEIGHT = p_hat > 0.0 ? new_reservoir.R_ACCUM_WEIGHT / new_reservoir.R_CNT / p_hat : 0.0;
                     reservoir = new_reservoir;
-
                     float3 origin = state.position;
+
                     float4 lpos = params.scene.lights[(uint32_t)new_reservoir.R_INDEX].points[0];
                     float3 dir = origin - make_float3(lpos.x, lpos.y, lpos.z);
                     float len = length(dir);
                     dir = normalize(dir);
                     
                     bool occluded = traceOcclusion(params.handle, origin, dir, 0.05, len);
-
+                    }
                     // TODO: add diffuse and specular
                 }
                 #endif // RESTIR_PROBE_NEIGHBOURS
-                {
+                #if 1
+                if (reservoir.R_INDEX < params.scene.numLights && reservoir.R_INDEX >= 0) {
                     const UniformLight& currLight = params.scene.lights[(uint32_t)reservoir.R_INDEX];
                     float3 origin = state.position;
                     float4 lpos = params.scene.lights[(uint32_t)reservoir.R_INDEX].points[0];
@@ -699,15 +740,21 @@ extern "C" __global__ void __closesthit__radiance()
                     radiance *= reservoir.R_WEIGHT / pdf;// * misWeightProbe;
                     prd->radiance = radiance;
 
-                    params.reservoirs[pixel_index] = reservoir;
+                    float a = 0.1;
+                    params.reservoirs[pixel_index] = reservoir * a + prevRad * (1 - a);
                 }
+                
+                // TODO: add camera position update
+                params.worldPosition[pixel_index] = make_float4(state.position);
+                #endif
             } else {
                 prd->radiance = make_float3(1000.0f, 0.0f, 0.0f);
                 prd->throughput = make_float3(0,0,0);
                 return;
             }
+        #endif
         } else {
-        	radiance = estimateDirectLighting(prd->sampler, state, toLight, lightPdf);
+            radiance = estimateDirectLighting(prd->sampler, state, toLight, lightPdf);
         }
         #undef min
         #undef max

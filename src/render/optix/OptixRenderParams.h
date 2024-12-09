@@ -68,7 +68,15 @@ struct Params
     float shadowRayTmin;
     float materialRayTmin;
 
+    bool cameraMoved;
+    float invPerspective[16];
+    float prevPerspective[16];
+    float3 cameraPosition;
+    float3 prevCameraPosition;
     Reservoirs reservoirs;
+    Reservoirs worldPosition;
+    Reservoirs prevWorldPosition;
+
     bool useRestirProbe;
     bool useMisWeightPower;
     float misWeightPowerPower;

@@ -68,7 +68,7 @@ public:
 
     void prepare()
     {
-        m_sceneLoader->loadGltf("C:/work/vespa/vespa.gltf", *m_scene);
+        m_sceneLoader->loadGltf("/home/restir/restir/builds/Strelka/build/Debug/src/scene/vespa/vespa.gltf", *m_scene);
         oka::Camera camera;
         camera.name = "Main";
         camera.fov = 45.0f;
@@ -95,6 +95,9 @@ public:
         m_settingsManager->setAs<uint32_t>("render/width", imageWidth);
         m_settingsManager->setAs<uint32_t>("render/height", imageHeight);
         m_settingsManager->setAs<uint32_t>("render/pt/depth", 4);
+        m_settingsManager->setAs<bool>("render/pt/useRestirProbe", true);
+        m_settingsManager->setAs<bool>("render/pt/useMisWeightPower", false);
+        m_settingsManager->setAs<float>("render/pt/misWeightPowerPower", 2.0);
         m_settingsManager->setAs<uint32_t>("render/pt/sppTotal", 256);
         m_settingsManager->setAs<uint32_t>("render/pt/spp", 1);
         m_settingsManager->setAs<uint32_t>("render/pt/iteration", 0);

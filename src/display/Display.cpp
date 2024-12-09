@@ -182,9 +182,9 @@ void Display::drawUI()
     mSettings->setAs<float>("render/pt/dev/shadowRayTmin", shadowRayTmin);
     mSettings->setAs<float>("render/pt/dev/shadowRayTmin", shadowRayTmin);
 
-    bool useRestirProbe = mSettings->getAs<bool>("render/pt/useRestirProbe");
-    ImGui::Checkbox("Use Restir Probe", &useRestirProbe);
-    mSettings->setAs<bool>("render/pt/useRestirProbe", useRestirProbe);
+    float useRestirProbe = mSettings->getAs<bool>("render/pt/useRestirProbe");
+    ImGui::InputFloat("Use Restir Probe", &useRestirProbe);
+    mSettings->setAs<bool>("render/pt/useRestirProbe", useRestirProbe > 0.5);
 
     bool useMisWeightPower = mSettings->getAs<bool>("render/pt/useMisWeightPower");
     ImGui::Checkbox("Use Mis Weight Power", &useMisWeightPower);
