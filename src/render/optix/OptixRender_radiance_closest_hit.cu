@@ -645,9 +645,11 @@ extern "C" __global__ void __closesthit__radiance()
 
                 UpdateReservoir(reservoir, light_index, weight, 1, prd->sampler);
             }
-            
             if (IsReservoirValid(reservoir))
             {
+                const int pixel_index = prd->linearPixelIndex / 4;
+                const int pixel_x = pixel_index % params.image_width;
+                const int pixel_y = pixel_index / params.image_width;
                 #if 1 // RESTIR_PROBE_REUSE
                 {
 
@@ -711,6 +713,7 @@ extern "C" __global__ void __closesthit__radiance()
                     new_reservoir.R_WEIGHT = p_hat > 0.0 ? new_reservoir.R_ACCUM_WEIGHT / new_reservoir.R_CNT / p_hat : 0.0;
                     reservoir = new_reservoir;
                     float3 origin = state.position;
+
 
                     float4 lpos = params.scene.lights[(uint32_t)new_reservoir.R_INDEX].points[0];
                     float3 dir = origin - make_float3(lpos.x, lpos.y, lpos.z);
